@@ -6,7 +6,7 @@ HTML := $(wildcard html/*.js html/*.html)
 GIT_VERSION ?= $(shell git describe --tags)
 GIT_REVISION ?= $(shell git rev-parse --short HEAD)
 
-CFLAGS := -Werror -Wall -g -I$(CURDIR) -D_GNU_SOURCE
+CFLAGS := -Werror -Wall -Wno-deprecated-declarations -g -I$(CURDIR) -D_GNU_SOURCE
 LDLIBS := -lpthread -lstdc++
 
 # libdatachannel deprecations on bookworm
