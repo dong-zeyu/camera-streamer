@@ -25,7 +25,7 @@ extern "C" {
 #include <set>
 
 #include <BasicUsageEnvironment.hh>
-#include <RTSPServerSupportingHTTPStreaming.hh>
+#include <RTSPServer.hh>
 #include <OnDemandServerMediaSubsession.hh>
 #include <H264VideoStreamFramer.hh>
 #include <H264VideoRTPSink.hh>
@@ -181,47 +181,47 @@ public:
   }
 };
 
-class DynamicRTSPServer: public RTSPServerSupportingHTTPStreaming
+class DynamicRTSPServer: public RTSPServer
 {
 public:
   static DynamicRTSPServer* createNew(UsageEnvironment& env, Port ourPort,
 				      UserAuthenticationDatabase* authDatabase,
 				      unsigned reclamationTestSeconds = 65)
   {
-    int ourSocket = setUpOurSocket(env, ourPort);
-    if (ourSocket == -1) return NULL;
+    int ourSocketIPv4 = setUpOurSocket(env, ourPort, AF_INET);
+    int ourSocketIPv6 = setUpOurSocket(env, ourPort, AF_INET6);
+    if (ourSocketIPv4 < 0 && ourSocketIPv6 < 0) return NULL;
 
-    return new DynamicRTSPServer(env, ourSocket, ourPort, authDatabase, reclamationTestSeconds);
+    return new DynamicRTSPServer(env, ourSocketIPv4, ourSocketIPv6, ourPort, authDatabase, reclamationTestSeconds);
   }
 
 protected:
-  DynamicRTSPServer(UsageEnvironment& env, int ourSocket, Port ourPort,
-		    UserAuthenticationDatabase* authDatabase, unsigned reclamationTestSeconds)
-    : RTSPServerSupportingHTTPStreaming(env, ourSocket, ourPort, authDatabase, reclamationTestSeconds)
+  DynamicRTSPServer(UsageEnvironment& env, int ourSocketIPv4, int ourSocketIPv6, Port ourPort,
+                                        UserAuthenticationDatabase* authDatabase, unsigned reclamationTestSeconds)
+    : RTSPServer(env, ourSocketIPv4, ourSocketIPv6, ourPort, authDatabase, reclamationTestSeconds)
   {
   }
-
   // called only by createNew();
   virtual ~DynamicRTSPServer()
   {
   }
 
 protected: // redefined virtual functions
-  virtual ServerMediaSession* lookupServerMediaSession(char const* streamName, Boolean isFirstLookupInSession)
+  virtual void lookupServerMediaSession(char const* streamName, lookupServerMediaSessionCompletionFunc *completionFunc, void *completionClientData, Boolean isFirstLookupInSession)
   {
     if (strcmp(streamName, stream_name) == 0) {
       LOG_INFO(NULL, "Requesting %s stream...", streamName);
     } else {
       LOG_INFO(NULL, "No stream available: '%s'", streamName);
-      return NULL;
+      return;
     }
 
-    auto sms = RTSPServer::lookupServerMediaSession(streamName);
+    ServerMediaSession* sms = getServerMediaSession(streamName);
 
-    if (sms && isFirstLookupInSession) { 
+    if (sms && isFirstLookupInSession) {
       // Remove the existing "ServerMediaSession" and create a new one, in case the underlying
       // file has changed in some way:
-      removeServerMediaSession(sms); 
+      removeServerMediaSession(sms);
       sms = NULL;
     }
 
@@ -231,7 +231,9 @@ protected: // redefined virtual functions
     auto subsession = new DynamicH264VideoFileServerMediaSubsession(envir(), false);
     sms->addSubsession(subsession);
     addServerMediaSession(sms);
-    return sms;
+    if (completionFunc != NULL) {
+      (*completionFunc)(completionClientData, sms);
+    }
   }
 };
 
